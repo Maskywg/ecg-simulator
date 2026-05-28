@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="zh-TW" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>互動學習：心電圖與心臟運動電聲機械同步模擬器</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
+        body { font-family: 'Noto Sans TC', sans-serif; }
+        .code-font { font-family: 'JetBrains Mono', monospace; }
+        .ecg-grid {
+            background-color: #0b0f19;
+            background-image:
+                linear-gradient(rgba(239,68,68,.15) 1px,transparent 1px),
+                linear-gradient(90deg,rgba(239,68,68,.15) 1px,transparent 1px),
+                linear-gradient(rgba(239,68,68,.05) 5px,transparent 5px),
+                linear-gradient(90deg,rgba(239,68,68,.05) 5px,transparent 5px);
+            background-size: 50px 50px,50px 50px,10px 10px,10px 10px;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-full flex flex-col">
+
+<header class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex flex-wrap justify-between items-center gap-4">
+    <div class="flex items-center gap-3">
+        <div class="bg-red-500/20 text-red-500 p-2.5 rounded-xl border border-red-500/30">
+            <i class="fa-solid fa-heart-pulse text-2xl animate-pulse"></i>
+        </div>
+        <div>
+            <h1 class="text-xl font-bold tracking-wide text-slate-100 flex items-center gap-2">
+                心電圖與心臟運動同步模擬器
+                <span class="text-xs font-normal px-2 py-0.5 bg-red-500/10 text-red-400 rounded-full border border-red-500/20">醫學教學自主學習版</span>
+            </h1>
+            <p class="text-xs text-slate-400">4腔室解剖剖面・血流粒子・PCG心音圖・電聲機械耦合完整呈現</p>
+        </div>
+    </div>
+    <div class="bg-slate-950 border border-slate-800 rounded-lg px-4 py-2 flex items-center gap-3">
+        <span class="text-xs text-slate-400">系統狀態：</span>
+        <span class="flex items-center gap-1.5 text-xs text-green-400 font-medium">
+            <span class="w-2 h-2 rounded-full bg-green-500 animate-ping"></span>示波器已就緒
+        </span>
+    </div>
+</header>
+
+<main class="flex-1 grid grid-cols-1 xl:grid-cols-12 gap-6 p-6">
+
+    <!-- 左側：心臟 Canvas -->
+    <section class="xl:col-span-5 bg-slate-900 rounded-2xl border border-slate-800 p-6 flex flex-col gap-4 shadow-2xl">
+        <div class="flex justify-between items-center">
+            <h2 class="text-lg font-bold text-slate-200 flex items-center gap-2">
+                <i class="fa-solid fa-circle-info text-blue-400"></i>
+                🫀 4腔室解剖剖面 & 血流動態
+            </h2>
+            <span id="state-badge" class="px-2.5 py-1 text-xs font-semibold rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                心房充盈期
+            </span>
+        </div>
+
+        <div class="relative flex-1 min-h-[320px] max-h-[420px] bg-slate-950/40 rounded-xl border border-slate-800/50 overflow-hidden">
+            <div id="infarct-warning" class="absolute top-3 left-3 z-10 text-xs font-bold text-red-400 bg-red-500/10 border border-red-500/30 px-3 py-1.5 rounded-lg hidden flex items-center gap-1.5">
+                <i class="fa-solid fa-triangle-exclamation animate-bounce"></i> 前壁心肌缺氧壞死
+            </div>
+            <!-- Canvas: heart anatomy + blood particles -->
+            <canvas id="heart-canvas" class="w-full h-full block"></canvas>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800 text-center">
+                <p class="text-[10px] text-slate-400">房室瓣 (進水門)</p>
+                <p id="av-valve-status" class="text-sm font-bold text-green-400 mt-1">開啟充盈</p>
+            </div>
+            <div class="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800 text-center">
+                <p class="text-[10px] text-slate-400">半月瓣 (出水門)</p>
+                <p id="sl-valve-status" class="text-sm font-bold text-red-400 mt-1">關閉防回流</p>
+            </div>
+            <div class="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800 text-center">
+                <p class="text-[10px] text-slate-400">第一心音 S1</p>
+                <p id="s1-status" class="text-xs font-semibold text-slate-500 mt-1">等容收縮發聲</p>
+            </div>
+            <div class="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800 text-center">
+                <p class="text-[10px] text-slate-400">第二心音 S2</p>
+                <p id="s2-status" class="text-xs font-semibold text-slate-500 mt-1">等容舒張發聲</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- 右側：ECG + PCG + 控制 -->
+    <section class="xl:col-span-7 bg-slate-900 rounded-2xl border border-slate-800 p-6 flex flex-col gap-5 shadow-2xl">
+
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-800 pb-4">
+            <div>
+                <h2 class="text-lg font-bold text-slate-200 flex items-center gap-2">
+                    <i class="fa-solid fa-wave-square text-green-400"></i>
+                    📈 心電圖 (ECG Lead II) + 心音圖 (PCG)
+                </h2>
+                <p class="text-xs text-slate-400">滾動式即時追蹤 · 25mm/s 標準紙速</p>
+            </div>
+            <div class="flex items-center gap-3 flex-wrap">
+                <button id="btn-audio-init" class="px-3 py-1.5 bg-yellow-500 hover:bg-yellow-600 text-slate-950 text-xs font-bold rounded-lg flex items-center gap-1.5 transition">
+                    <i class="fa-solid fa-volume-high"></i>開啟心音
+                </button>
+                <div class="flex items-center gap-2 bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800">
+                    <i class="fa-solid fa-gauge-high text-yellow-400 text-xs"></i>
+                    <input type="range" id="bpm-slider" min="45" max="130" value="65" class="w-16 accent-yellow-400">
+                    <span id="bpm-text" class="text-xs font-bold code-font text-yellow-400 w-14">65 BPM</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ECG -->
+        <div class="relative w-full h-36 bg-slate-950 rounded-xl overflow-hidden border border-slate-800">
+            <div class="absolute left-2 top-1 text-[10px] text-slate-500 code-font z-10">ECG</div>
+            <canvas id="ecg-canvas" class="w-full h-full block ecg-grid"></canvas>
+            <div id="scan-cursor" class="absolute top-0 bottom-0 w-6 pointer-events-none"
+                 style="background:linear-gradient(90deg,transparent 0%,rgba(250,204,21,.06) 40%,rgba(250,204,21,.18) 100%);left:0%"></div>
+        </div>
+
+        <!-- PCG (Phonocardiogram) -->
+        <div class="relative w-full h-16 bg-slate-950 rounded-xl overflow-hidden border border-slate-800">
+            <div class="absolute left-2 top-1 text-[10px] text-amber-500/80 code-font z-10">PCG 心音圖</div>
+            <div class="absolute right-2 top-1 text-[10px] text-slate-600 code-font z-10">S1=咚 · S2=噠</div>
+            <canvas id="pcg-canvas" class="w-full h-full block" style="background:#0b0f19"></canvas>
+        </div>
+
+        <!-- 播放控制 -->
+        <div class="bg-slate-950 p-3 rounded-xl border border-slate-800/80">
+            <div class="flex justify-between items-center mb-2">
+                <span class="text-xs text-slate-400 flex items-center gap-1.5">
+                    <i class="fa-solid fa-circle-play text-emerald-400"></i>控制：
+                </span>
+                <div class="flex gap-2">
+                    <button id="btn-autoplay" class="px-3 py-1 bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-[11px] font-bold rounded transition">自動放映</button>
+                    <button id="btn-pause"    class="px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold rounded transition">暫停探索</button>
+                </div>
+            </div>
+            <div class="flex items-center gap-3">
+                <span class="text-[10px] code-font text-slate-500 shrink-0">0.0s</span>
+                <input type="range" id="time-scrubber" min="0" max="99" value="0" class="flex-1 accent-emerald-400 h-1.5 bg-slate-800 rounded-lg cursor-pointer">
+                <span class="text-[10px] code-font text-slate-500 shrink-0">1.0s</span>
+            </div>
+        </div>
+
+        <!-- 病理切換 -->
+        <div>
+            <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">臨床案例切換</h3>
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+                <button onclick="setMode('normal')"     id="btn-mode-normal"     class="mode-btn p-2.5 rounded-xl border-2 border-emerald-500/80 bg-emerald-950/20 text-left flex flex-col gap-0.5 transition hover:bg-slate-800">
+                    <span class="text-xs font-bold text-slate-200">0. 正常竇性</span>
+                    <span class="text-[10px] text-emerald-400">均勻泵血</span>
+                </button>
+                <button onclick="setMode('stemi')"      id="btn-mode-stemi"      class="mode-btn p-2.5 rounded-xl border-2 border-slate-800 bg-slate-950 text-left flex flex-col gap-0.5 transition hover:bg-slate-800">
+                    <span class="text-xs font-bold text-slate-200 flex items-center gap-1"><i class="fa-solid fa-triangle-exclamation text-red-400 text-[10px]"></i>1. STEMI</span>
+                    <span class="text-[10px] text-red-400">墓碑 ST 上升</span>
+                </button>
+                <button onclick="setMode('nstemi')"     id="btn-mode-nstemi"     class="mode-btn p-2.5 rounded-xl border-2 border-slate-800 bg-slate-950 text-left flex flex-col gap-0.5 transition hover:bg-slate-800">
+                    <span class="text-xs font-bold text-slate-200">2. NSTEMI</span>
+                    <span class="text-[10px] text-amber-400">ST 凹陷/T 倒</span>
+                </button>
+                <button onclick="setMode('hyperacute')" id="btn-mode-hyperacute" class="mode-btn p-2.5 rounded-xl border-2 border-slate-800 bg-slate-950 text-left flex flex-col gap-0.5 transition hover:bg-slate-800">
+                    <span class="text-xs font-bold text-slate-200">3. 超早期 T 波</span>
+                    <span class="text-[10px] text-cyan-400">高尖對稱 T</span>
+                </button>
+                <button onclick="setMode('old_mi')"     id="btn-mode-old_mi"     class="mode-btn p-2.5 rounded-xl border-2 border-slate-800 bg-slate-950 text-left flex flex-col gap-0.5 transition hover:bg-slate-800">
+                    <span class="text-xs font-bold text-slate-200">4. 陳舊 MI</span>
+                    <span class="text-[10px] text-indigo-400">深 Q 波 + S3</span>
+                </button>
+            </div>
+        </div>
+    </section>
+</main>
+
+<!-- 底部學習面板 -->
+<footer class="mx-6 mb-6 p-5 bg-slate-900 rounded-2xl border border-slate-800 shadow-xl">
+    <h3 class="text-sm font-bold text-slate-200 border-b border-slate-800 pb-3 mb-4 flex items-center gap-2">
+        <i class="fa-solid fa-graduation-cap text-yellow-400"></i>即時電聲耦合學習面板
+    </h3>
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div id="card-p" class="bg-slate-950/60 p-3 rounded-xl border border-slate-800 transition-all duration-200">
+            <div class="flex items-center gap-2 mb-2">
+                <span class="px-1.5 py-0.5 text-xs font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded code-font">P 波</span>
+                <h4 class="text-xs font-semibold text-slate-200">心房去極化</h4>
+            </div>
+            <ul class="text-[11px] text-slate-400 space-y-1 list-disc list-inside">
+                <li><strong class="text-slate-300">電：</strong>SA 節放電→心房</li>
+                <li><strong class="text-slate-300">械：</strong>心房主動擠壓充盈</li>
+                <li><strong class="text-slate-300">瓣：</strong>房室瓣開，半月瓣關</li>
+                <li><strong class="text-slate-300">音：</strong><strong class="text-yellow-400">靜音</strong></li>
+            </ul>
+        </div>
+        <div id="card-qrs" class="bg-slate-950/60 p-3 rounded-xl border border-slate-800 transition-all duration-200">
+            <div class="flex items-center gap-2 mb-2">
+                <span class="px-1.5 py-0.5 text-xs font-bold bg-red-500/10 text-red-400 border border-red-500/20 rounded code-font">QRS</span>
+                <h4 class="text-xs font-semibold text-slate-200">心室去極化 (等容收縮)</h4>
+            </div>
+            <ul class="text-[11px] text-slate-400 space-y-1 list-disc list-inside">
+                <li><strong class="text-slate-300">電：</strong>希氏束→蒲金氏纖維</li>
+                <li><strong class="text-slate-300">械：</strong>心室急速縮緊</li>
+                <li><strong class="text-slate-300">瓣：</strong><strong class="text-emerald-400">房室瓣撞閉 💥</strong></li>
+                <li><strong class="text-slate-300">音：</strong><strong class="text-emerald-400">S1「咚」(Lub)</strong></li>
+            </ul>
+        </div>
+        <div id="card-st" class="bg-slate-950/60 p-3 rounded-xl border border-slate-800 transition-all duration-200">
+            <div class="flex items-center gap-2 mb-2">
+                <span class="px-1.5 py-0.5 text-xs font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded code-font">ST 段</span>
+                <h4 class="text-xs font-semibold text-slate-200">心室射血平台</h4>
+            </div>
+            <ul class="text-[11px] text-slate-400 space-y-1 list-disc list-inside">
+                <li><strong class="text-slate-300">電：</strong>動作電位平台期</li>
+                <li><strong class="text-slate-300">械：</strong>心室強力噴血</li>
+                <li><strong class="text-slate-300">瓣：</strong>主動脈/肺動脈瓣開</li>
+                <li><strong class="text-slate-300">音：</strong><strong class="text-yellow-400">靜音</strong></li>
+            </ul>
+        </div>
+        <div id="card-t" class="bg-slate-950/60 p-3 rounded-xl border border-slate-800 transition-all duration-200">
+            <div class="flex items-center gap-2 mb-2">
+                <span class="px-1.5 py-0.5 text-xs font-bold bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 rounded code-font">T 波</span>
+                <h4 class="text-xs font-semibold text-slate-200">心室再極化 (等容舒張)</h4>
+            </div>
+            <ul class="text-[11px] text-slate-400 space-y-1 list-disc list-inside">
+                <li><strong class="text-slate-300">電：</strong>心室電位復極</li>
+                <li><strong class="text-slate-300">械：</strong>心室舒張</li>
+                <li><strong class="text-slate-300">瓣：</strong><strong class="text-cyan-400">半月瓣撞閉 💥</strong></li>
+                <li><strong class="text-slate-300">音：</strong><strong class="text-cyan-400">S2「噠」(Dub)</strong></li>
+            </ul>
+        </div>
+    </div>
+</footer>
+
+<script>
+// =====================================================================
+// 全域狀態
+// =====================================================================
+let currentMode = 'normal', bpm = 65, isPlaying = true;
+let cycleProgress = 0, lastTimestamp = 0;
+let playedS1 = false, playedS2 = false, playedS3 = false;
+
+// DOM 快取
+const DOM = {
+    heartCanvas:    document.getElementById('heart-canvas'),
+    ecgCanvas:      document.getElementById('ecg-canvas'),
+    pcgCanvas:      document.getElementById('pcg-canvas'),
+    scanCursor:     document.getElementById('scan-cursor'),
+    bpmSlider:      document.getElementById('bpm-slider'),
+    bpmText:        document.getElementById('bpm-text'),
+    scrubber:       document.getElementById('time-scrubber'),
+    btnAutoplay:    document.getElementById('btn-autoplay'),
+    btnPause:       document.getElementById('btn-pause'),
+    btnAudioInit:   document.getElementById('btn-audio-init'),
+    stateBadge:     document.getElementById('state-badge'),
+    avStatus:       document.getElementById('av-valve-status'),
+    slStatus:       document.getElementById('sl-valve-status'),
+    s1Status:       document.getElementById('s1-status'),
+    s2Status:       document.getElementById('s2-status'),
+    infarctWarn:    document.getElementById('infarct-warning'),
+    cards:          { p: document.getElementById('card-p'), qrs: document.getElementById('card-qrs'), st: document.getElementById('card-st'), t: document.getElementById('card-t') }
+};
+
+const hCtx  = DOM.heartCanvas.getContext('2d');
+const eCtx  = DOM.ecgCanvas.getContext('2d');
+const pCtx  = DOM.pcgCanvas.getContext('2d');
+
+// =====================================================================
+// Audio
+// =====================================================================
+let audioCtx = null, audioEnabled = false;
+
+DOM.btnAudioInit.addEventListener('click', () => {
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    audioEnabled = true;
+    DOM.btnAudioInit.innerHTML = '<i class="fa-solid fa-volume-high text-emerald-400"></i> 心音已開啟';
+    DOM.btnAudioInit.className = 'px-3 py-1.5 bg-slate-800 text-slate-100 text-xs font-bold rounded-lg border border-slate-700 flex items-center gap-1.5';
+});
+
+function playSound(type) {
+    if (!audioEnabled || !audioCtx) return;
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const now = audioCtx.currentTime;
+    const tone = (f0, f1, dur, gain, shape='sine') => {
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = shape; o.connect(g); g.connect(audioCtx.destination);
+        o.frequency.setValueAtTime(f0, now);
+        o.frequency.exponentialRampToValueAtTime(f1, now + dur);
+        g.gain.setValueAtTime(gain, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + dur + 0.01);
+        o.start(now); o.stop(now + dur + 0.02);
+    };
+    if (type === 'S1') { tone(45,20,.14,.65); tone(110,30,.05,.25,'triangle'); }
+    else if (type === 'S2') { tone(70,35,.09,.55); tone(160,50,.035,.35,'triangle'); }
+    else if (type === 'S3') { tone(30,18,.18,.35); }
+}
+
+// =====================================================================
+// ECG 數值模型
+// =====================================================================
+function ecgVal(t, mode) {
+    t = ((t%1)+1)%1;
+    let y = 0;
+    if (t>=.05&&t<=.18) y += .12*Math.sin(((t-.05)/.13)*Math.PI);
+    if (mode==='old_mi') {
+        if      (t>=.24&&t<.285) y += -.45*Math.sin(((t-.24)/.045)*Math.PI);
+        else if (t>=.285&&t<.31) y += -.45+.95*((t-.285)/.025);
+        else if (t>=.31&&t<.34)  y += .5-.6*((t-.31)/.03);
+        else if (t>=.34&&t<.37)  y += -.1+.1*((t-.34)/.03);
+    } else {
+        if      (t>=.27&&t<.285) y += -.1*((t-.27)/.015);
+        else if (t>=.285&&t<.305) y += -.1+1.1*((t-.285)/.02);
+        else if (t>=.305&&t<.33)  y += 1.0-1.25*((t-.305)/.025);
+        else if (t>=.33&&t<.355)  y += -.25+.25*((t-.33)/.025);
+    }
+    if (mode==='stemi') {
+        if      (t>=.33&&t<=.45) y = -.25+.67*((t-.33)/.12);
+        else if (t>.45&&t<=.65)  y = .42*Math.sin(((0.65-t)/0.20)*(Math.PI/2)+(Math.PI/4));
+        else if (t>.65&&t<=.73)  y = .3*((0.73-t)/0.08);
+    } else if (mode==='nstemi') {
+        if      (t>=.33&&t<.36) y = -.15*((t-.33)/.03);
+        else if (t>=.36&&t<.47) y = -.15;
+        else if (t>=.47&&t<.65) y = -.15-.20*Math.sin(((t-.47)/.18)*Math.PI);
+        else if (t>=.65&&t<.72) y = -.15*((0.72-t)/.07);
+    } else if (mode==='hyperacute') {
+        if (t>=.45&&t<=.68) y = .72*Math.sin(((t-.45)/.23)*Math.PI);
+    } else if (mode==='old_mi') {
+        if (t>=.46&&t<=.66) y = -.05*Math.sin(((t-.46)/.20)*Math.PI);
+    } else {
+        if (t>=.46&&t<=.66) y = .22*Math.sin(((t-.46)/.20)*Math.PI);
+    }
+    return y;
+}
+
+// =====================================================================
+// 滾動 ECG Canvas
+// =====================================================================
+let ecgBuf = null, ecgHead = 0;
+function initECGBuf() { ecgBuf = new Float32Array(DOM.ecgCanvas.width); ecgHead = 0; }
+function pushECG(v) {
+    if (!ecgBuf || ecgBuf.length !== DOM.ecgCanvas.width) initECGBuf();
+    ecgBuf[ecgHead] = v;
+    ecgHead = (ecgHead+1) % ecgBuf.length;
+}
+function drawECG() {
+    const w = DOM.ecgCanvas.width, h = DOM.ecgCanvas.height;
+    if (!ecgBuf || ecgBuf.length !== w) return;
+    eCtx.clearRect(0,0,w,h);
+    const midY = h/2+8, sy = h*.35;
+    eCtx.beginPath(); eCtx.strokeStyle='#22c55e'; eCtx.lineWidth=2.5;
+    eCtx.lineJoin='round'; eCtx.shadowColor='#4ade80'; eCtx.shadowBlur=4;
+    let started = false;
+    for (let i=0;i<w;i++) {
+        const bi=(ecgHead+i)%w, dist=(w-i+w)%w;
+        if (dist<6){started=false;eCtx.shadowBlur=0;continue;}
+        eCtx.globalAlpha=.3+(i/w)*.7;
+        const y = midY - ecgBuf[bi]*sy;
+        if(!started){eCtx.moveTo(i,y);started=true;}else eCtx.lineTo(i,y);
+    }
+    eCtx.stroke(); eCtx.globalAlpha=1; eCtx.shadowBlur=0;
+}
+
+// =====================================================================
+// PCG Canvas (Phonocardiogram)
+// =====================================================================
+let pcgBuf=null, pcgHead=0;
+let pcgS1Amp=0, pcgS1Ph=0, pcgS2Amp=0, pcgS2Ph=0;
+let pcgFiredS1=false, pcgFiredS2=false;
+
+function initPCGBuf() { pcgBuf=new Float32Array(DOM.pcgCanvas.width); pcgHead=0; }
+function firePCG(type) {
+    if (type==='S1') { pcgS1Amp=0.88; pcgS1Ph=0; }
+    else if (type==='S2') { pcgS2Amp=0.72; pcgS2Ph=0; }
+    else if (type==='S3') { pcgS1Amp=Math.max(pcgS1Amp,.3); }
+}
+function pushPCG(t) {
+    if(!pcgBuf||pcgBuf.length!==DOM.pcgCanvas.width)initPCGBuf();
+    if(t>=.28&&t<.30&&!pcgFiredS1){firePCG('S1');pcgFiredS1=true;}
+    if(t<.27)pcgFiredS1=false;
+    if(t>=.48&&t<.50&&!pcgFiredS2){firePCG('S2');pcgFiredS2=true;}
+    if(t<.47)pcgFiredS2=false;
+    let s=0;
+    if(pcgS1Amp>.01){s+=pcgS1Amp*Math.sin(pcgS1Ph*Math.PI*2);pcgS1Ph+=50/60;pcgS1Amp*=.80;}
+    if(pcgS2Amp>.01){s+=pcgS2Amp*Math.sin(pcgS2Ph*Math.PI*2)*.85;pcgS2Ph+=85/60;pcgS2Amp*=.76;}
+    pcgBuf[pcgHead]=s;
+    pcgHead=(pcgHead+1)%pcgBuf.length;
+}
+function drawPCG() {
+    const w=DOM.pcgCanvas.width,h=DOM.pcgCanvas.height;
+    if(!pcgBuf||pcgBuf.length!==w)return;
+    pCtx.clearRect(0,0,w,h);
+    const midY=h/2, sy=h*.4;
+    pCtx.strokeStyle='rgba(100,116,139,.25)'; pCtx.lineWidth=1;
+    pCtx.beginPath(); pCtx.moveTo(0,midY); pCtx.lineTo(w,midY); pCtx.stroke();
+    pCtx.beginPath(); pCtx.strokeStyle='#f59e0b'; pCtx.lineWidth=1.8;
+    pCtx.lineJoin='round'; pCtx.shadowColor='#fbbf24'; pCtx.shadowBlur=3;
+    let started=false;
+    for(let i=0;i<w;i++){
+        const bi=(pcgHead+i)%w, dist=(w-i+w)%w;
+        if(dist<6){started=false;continue;}
+        pCtx.globalAlpha=.25+(i/w)*.75;
+        const y=midY-pcgBuf[bi]*sy;
+        if(!started){pCtx.moveTo(i,y);started=true;}else pCtx.lineTo(i,y);
+    }
+    pCtx.stroke(); pCtx.globalAlpha=1; pCtx.shadowBlur=0;
+}
+
+// =====================================================================
+// HEART CANVAS RENDERER — 4-Chamber Anatomical Cross-Section
+// =====================================================================
+// Logical coordinate space: 380 × 390  (scaled to canvas each frame)
+const HW=380, HH=390;
+
+function sysFactor(t){
+    if(t<.28||t>.60)return 0;
+    const m=.43;
+    return t<=m ? (t-.28)/(m-.28) : 1-(t-m)/(.60-m);
+}
+function atrFactor(t){
+    if(t<.06||t>.23)return 0;
+    const m=.14;
+    return t<=m ? (t-.06)/(m-.06) : 1-(t-m)/(.23-m);
+}
+function avOpenFactor(t){
+    // AV valves open during diastole
+    let open = (t<.27||t>=.58)?1:0;
+    if(t>=.255&&t<.28) open=1-(t-.255)/.025;
+    if(t>=.575&&t<.595) open=(t-.575)/.02;
+    return Math.max(0,Math.min(1,open));
+}
+function slOpenFactor(t){
+    // Semilunar open during ejection
+    let open=(t>=.35&&t<.475)?1:0;
+    if(t>=.34&&t<.355) open=(t-.34)/.015;
+    if(t>=.475&&t<.50) open=1-(t-.475)/.025;
+    return Math.max(0,Math.min(1,open));
+}
+function condActive(t){
+    const a=new Set();
+    if(t>=.05&&t<.24){a.add('sa');a.add('saav');}
+    if(t>=.22&&t<.30){a.add('av');}
+    if(t>=.28&&t<.37){a.add('av');a.add('his');a.add('lb');a.add('rb');a.add('purk');}
+    return a;
+}
+
+function drawHeartFrame(t, mode) {
+    const W=DOM.heartCanvas.width, H=DOM.heartCanvas.height;
+    if(!W||!H)return;
+    const sc=Math.min(W/HW, H/HH)*.93;
+    const ox=(W-HW*sc)/2, oy=(H-HH*sc)/2;
+    hCtx.clearRect(0,0,W,H);
+    hCtx.save();
+    hCtx.translate(ox,oy);
+    hCtx.scale(sc,sc);
+    try {
+
+    const sys=sysFactor(t);
+    const atr=atrFactor(t);
+    const avO=avOpenFactor(t);
+    const slO=slOpenFactor(t);
+    const cond=condActive(t);
+    const isInfarct=(mode==='stemi'||mode==='old_mi');
+
+    // --- helpers ---
+    const fill=(color)=>{hCtx.fillStyle=color;hCtx.fill();};
+    const stroke=(color,w)=>{hCtx.strokeStyle=color;hCtx.lineWidth=w;hCtx.stroke();};
+
+    // --- PERICARDIAL GLOW ---
+    const pGlow=hCtx.createRadialGradient(190,215,60,190,215,185);
+    pGlow.addColorStop(0,'rgba(180,30,30,.12)');
+    pGlow.addColorStop(1,'rgba(180,30,30,0)');
+    hCtx.fillStyle=pGlow;
+    hCtx.beginPath(); hCtx.ellipse(190,215,178,180,0,0,Math.PI*2); hCtx.fill();
+
+    // ---- GREAT VESSELS (behind chambers) ----
+    // Pulmonary Veins (oxygenated → LA) — bright red lines from left
+    hCtx.lineCap='round';
+    [[62,65,88,90],[62,112,88,122]].forEach(([x1,y1,x2,y2])=>{
+        hCtx.lineWidth=12; stroke('#7f1d1d',12);
+        hCtx.beginPath(); hCtx.moveTo(x1,y1); hCtx.lineTo(x2,y2); hCtx.stroke();
+        hCtx.lineWidth=7; hCtx.strokeStyle='#ef4444';
+        hCtx.beginPath(); hCtx.moveTo(x1,y1); hCtx.lineTo(x2,y2); hCtx.stroke();
+    });
+    // Right PVs
+    [[182,45,170,82],[182,88,170,108]].forEach(([x1,y1,x2,y2])=>{
+        hCtx.lineWidth=11; stroke('#7f1d1d',11);
+        hCtx.beginPath(); hCtx.moveTo(x1,y1); hCtx.lineTo(x2,y2); hCtx.stroke();
+        hCtx.lineWidth=6; hCtx.strokeStyle='#ef4444';
+        hCtx.beginPath(); hCtx.moveTo(x1,y1); hCtx.lineTo(x2,y2); hCtx.stroke();
+    });
+    // SVC (deoxygenated → RA)
+    hCtx.beginPath(); hCtx.roundRect(264,35,22,52,11); fill('#3b0764');
+    hCtx.beginPath(); hCtx.roundRect(267,37,16,50,8); fill('#6d28d9');
+    // IVC
+    hCtx.beginPath(); hCtx.roundRect(264,180,22,42,11); fill('#3b0764');
+    hCtx.beginPath(); hCtx.roundRect(267,182,16,40,8); fill('#6d28d9');
+    // Aorta (oxygenated, exits LV/LVOT)
+    // Ascending Ao: x=183..205 going up; small arch shown
+    hCtx.beginPath();
+    hCtx.moveTo(183,148); hCtx.lineTo(183,46);
+    hCtx.quadraticCurveTo(188,30,210,34);
+    hCtx.quadraticCurveTo(232,38,234,60);
+    hCtx.lineTo(234,95);
+    hCtx.lineTo(228,95); hCtx.lineTo(228,62);
+    hCtx.quadraticCurveTo(228,46,212,42);
+    hCtx.quadraticCurveTo(196,38,196,48);
+    hCtx.lineTo(196,148); hCtx.closePath();
+    const aoGrad=hCtx.createLinearGradient(183,40,196,40);
+    aoGrad.addColorStop(0,'#991b1b'); aoGrad.addColorStop(1,'#b91c1c');
+    fill(aoGrad);
+    hCtx.beginPath();
+    hCtx.moveTo(185,148); hCtx.lineTo(185,48);
+    hCtx.quadraticCurveTo(190,35,210,38);
+    hCtx.quadraticCurveTo(228,42,228,60);
+    hCtx.lineTo(228,90); hCtx.lineTo(224,90);
+    hCtx.lineTo(224,62); hCtx.quadraticCurveTo(224,48,210,44);
+    hCtx.quadraticCurveTo(196,42,193,50); hCtx.lineTo(193,148); hCtx.closePath();
+    fill('#ef4444');
+    // PA (deoxygenated, exits RV)
+    hCtx.beginPath();
+    hCtx.moveTo(207,146); hCtx.lineTo(207,50); hCtx.quadraticCurveTo(207,30,195,28);
+    hCtx.lineTo(190,28); hCtx.lineTo(190,34); hCtx.quadraticCurveTo(200,36,200,50);
+    hCtx.lineTo(200,146); hCtx.closePath(); fill('#4c1d95');
+    hCtx.beginPath();
+    hCtx.moveTo(208.5,146); hCtx.lineTo(208.5,52); hCtx.quadraticCurveTo(208,33,196,31);
+    hCtx.lineTo(192,31); hCtx.lineTo(192,36); hCtx.quadraticCurveTo(200,38,200,54);
+    hCtx.lineTo(199,146); hCtx.closePath(); fill('#7c3aed');
+
+    // ---- ATRIA ----
+    // RA (right, deoxygenated — purple-dark)
+    hCtx.save();
+    // Atrial contraction: scale cavity down by atr*0.18
+    const raScale=1-atr*.18, laCavScale=1-atr*.18;
+
+    // RA outer wall
+    hCtx.beginPath();
+    hCtx.moveTo(198,112); hCtx.bezierCurveTo(198,76,216,68,244,68);
+    hCtx.bezierCurveTo(272,68,292,80,292,110);
+    hCtx.bezierCurveTo(292,142,272,162,244,162);
+    hCtx.bezierCurveTo(214,162,198,140,198,112);
+    const raWall=hCtx.createRadialGradient(244,110,10,244,110,55);
+    raWall.addColorStop(0,'#581c87'); raWall.addColorStop(1,'#3b0764');
+    fill(raWall);
+    // RA cavity (deoxygenated blood)
+    hCtx.save();
+    hCtx.translate(244,112); hCtx.scale(raScale,raScale); hCtx.translate(-244,-112);
+    hCtx.beginPath();
+    hCtx.moveTo(211,112); hCtx.bezierCurveTo(211,83,224,76,244,76);
+    hCtx.bezierCurveTo(264,76,279,88,279,110);
+    hCtx.bezierCurveTo(279,135,263,152,244,152);
+    hCtx.bezierCurveTo(222,152,211,135,211,112);
+    const raCav=hCtx.createRadialGradient(244,110,5,244,110,40);
+    raCav.addColorStop(0,'#7c3aed'); raCav.addColorStop(1,'#4c1d95');
+    fill(raCav);
+    hCtx.restore(); // ra scale
+
+    // LA outer wall
+    hCtx.beginPath();
+    hCtx.moveTo(90,112); hCtx.bezierCurveTo(90,76,108,68,137,68);
+    hCtx.bezierCurveTo(166,68,186,80,186,110);
+    hCtx.bezierCurveTo(186,142,167,162,138,162);
+    hCtx.bezierCurveTo(108,162,90,140,90,112);
+    const laWall=hCtx.createRadialGradient(137,108,10,137,108,55);
+    laWall.addColorStop(0,'#7f1d1d'); laWall.addColorStop(1,'#450a0a');
+    fill(laWall);
+    // LA cavity (oxygenated)
+    hCtx.save();
+    hCtx.translate(137,112); hCtx.scale(laCavScale,laCavScale); hCtx.translate(-137,-112);
+    hCtx.beginPath();
+    hCtx.moveTo(104,112); hCtx.bezierCurveTo(104,82,119,76,137,76);
+    hCtx.bezierCurveTo(155,76,172,88,172,110);
+    hCtx.bezierCurveTo(172,135,157,152,137,152);
+    hCtx.bezierCurveTo(117,152,104,135,104,112);
+    const laCav=hCtx.createRadialGradient(137,108,5,137,108,40);
+    laCav.addColorStop(0,'#f87171'); laCav.addColorStop(1,'#dc2626');
+    fill(laCav);
+    hCtx.restore(); // la scale
+    hCtx.restore();
+
+    // ---- VENTRICLES ----
+    // Ventricular contraction: cavity shrinks toward centroid
+    const lvSys = isInfarct ? sys*.55 : sys; // reduced EF in infarct
+
+    // ---- LV outer wall (myocardium) ----
+    hCtx.beginPath();
+    hCtx.moveTo(90,164);
+    hCtx.bezierCurveTo(74,186,68,228,70,276);
+    hCtx.bezierCurveTo(72,322,94,357,130,372);
+    hCtx.bezierCurveTo(149,379,168,382,187,382);
+    hCtx.lineTo(198,164);
+    hCtx.closePath();
+    const lvMuscle = isInfarct
+        ? (() => { const g=hCtx.createLinearGradient(90,164,198,382); g.addColorStop(0,'#7f1d1d'); g.addColorStop(.4,'#71717a'); g.addColorStop(1,'#6b7280'); return g; })()
+        : (() => { const g=hCtx.createRadialGradient(145,270,20,145,270,100); g.addColorStop(0,'#f87171'); g.addColorStop(.5,'#dc2626'); g.addColorStop(1,'#991b1b'); return g; })();
+    fill(lvMuscle);
+
+    // LV inner cavity (blood, animated)
+    hCtx.save();
+    hCtx.translate(148, 272);
+    hCtx.scale(1-lvSys*.32, 1-lvSys*.28);
+    hCtx.translate(-148,-272);
+    hCtx.beginPath();
+    hCtx.moveTo(104,166);
+    hCtx.bezierCurveTo(90,190,86,228,88,272);
+    hCtx.bezierCurveTo(90,314,110,346,144,362);
+    hCtx.bezierCurveTo(160,369,173,372,185,373);
+    hCtx.lineTo(191,166);
+    hCtx.closePath();
+    const lvBlood=hCtx.createRadialGradient(145,265,5,145,265,100);
+    lvBlood.addColorStop(0,'#fca5a5'); lvBlood.addColorStop(1,'#ef4444');
+    fill(lvBlood);
+    hCtx.restore();
+
+    // ---- RV outer wall ----
+    hCtx.beginPath();
+    hCtx.moveTo(198,164);
+    hCtx.bezierCurveTo(218,165,246,174,266,198);
+    hCtx.bezierCurveTo(283,216,290,250,288,284);
+    hCtx.bezierCurveTo(285,318,267,350,243,366);
+    hCtx.bezierCurveTo(222,377,202,382,187,382);
+    hCtx.closePath();
+    const rvMuscle=hCtx.createRadialGradient(246,270,10,246,270,80);
+    rvMuscle.addColorStop(0,'#6b21a8'); rvMuscle.addColorStop(1,'#3b0764');
+    fill(rvMuscle);
+
+    // RV inner cavity
+    hCtx.save();
+    hCtx.translate(238,268);
+    hCtx.scale(1-sys*.28, 1-sys*.22);
+    hCtx.translate(-238,-268);
+    hCtx.beginPath();
+    hCtx.moveTo(203,167);
+    hCtx.bezierCurveTo(220,168,246,177,264,200);
+    hCtx.bezierCurveTo(280,218,286,250,283,282);
+    hCtx.bezierCurveTo(280,314,264,344,241,359);
+    hCtx.bezierCurveTo(222,370,204,375,188,374);
+    hCtx.closePath();
+    const rvBlood=hCtx.createRadialGradient(240,265,5,240,265,80);
+    rvBlood.addColorStop(0,'#7c3aed'); rvBlood.addColorStop(1,'#4c1d95');
+    fill(rvBlood);
+    hCtx.restore();
+
+    // ---- SEPTA ----
+    // IVS band
+    hCtx.beginPath();
+    hCtx.moveTo(196,164); hCtx.quadraticCurveTo(193,270,189,382);
+    hCtx.lineTo(203,382); hCtx.quadraticCurveTo(203,270,203,164);
+    hCtx.closePath();
+    const ivsG=hCtx.createLinearGradient(196,164,203,164);
+    ivsG.addColorStop(0,'#991b1b'); ivsG.addColorStop(1,'#3b0764');
+    fill(ivsG);
+    // IAS
+    hCtx.beginPath(); hCtx.roundRect(191,68,7,94,3); fill('#6b21a8');
+
+    // ---- VALVES ----
+    const valveColor='rgba(255,245,240,0.88)';
+    hCtx.lineWidth=2; hCtx.lineCap='round';
+
+    // Mitral valve (LA↔LV)
+    // open: leaflets bend DOWN into LV; closed: bow UP into LA
+    const mvBend = avO * 14 - (1-avO)*12; // + = open (bend down), - = closed (bend up)
+    hCtx.beginPath();
+    hCtx.moveTo(154,163);
+    hCtx.quadraticCurveTo(172, 163+mvBend, 190,164);
+    hCtx.strokeStyle=valveColor; hCtx.lineWidth=3; hCtx.stroke();
+    hCtx.beginPath();
+    hCtx.moveTo(96,164);
+    hCtx.quadraticCurveTo(126,163+mvBend,154,163);
+    hCtx.stroke();
+
+    // Tricuspid valve (RA↔RV) — positioned slightly lower
+    const tvBend = avO*13 - (1-avO)*11;
+    hCtx.beginPath();
+    hCtx.moveTo(220,166); hCtx.quadraticCurveTo(238,166+tvBend,254,166);
+    hCtx.stroke();
+    hCtx.beginPath();
+    hCtx.moveTo(254,166); hCtx.quadraticCurveTo(270,166+tvBend,288,165);
+    hCtx.stroke();
+
+    // Aortic valve (at Ao root, y≈148)
+    if(slO<.5){
+        // Closed: 3 cusps visible as curved lines meeting in center
+        const cl=1-slO*2;
+        hCtx.strokeStyle=`rgba(255,240,230,${.7*cl})`;
+        hCtx.lineWidth=2;
+        hCtx.beginPath(); hCtx.moveTo(185,148); hCtx.quadraticCurveTo(189,143+3*cl,192,148); hCtx.stroke();
+        hCtx.beginPath(); hCtx.moveTo(192,148); hCtx.quadraticCurveTo(196,143+3*cl,199,148); hCtx.stroke();
+        hCtx.beginPath(); hCtx.moveTo(185,148); hCtx.quadraticCurveTo(192,152-3*cl,199,148); hCtx.stroke();
+    }
+    // Pulmonary valve
+    if(slO<.5){
+        const cl=1-slO*2;
+        hCtx.strokeStyle=`rgba(220,200,255,${.7*cl})`;
+        hCtx.beginPath(); hCtx.moveTo(202,146); hCtx.quadraticCurveTo(204,142+2*cl,207,146); hCtx.stroke();
+        hCtx.beginPath(); hCtx.moveTo(207,146); hCtx.quadraticCurveTo(209,142+2*cl,212,146); hCtx.stroke();
+    }
+
+    // ---- CORONARY ARTERIES ----
+    hCtx.lineCap='round';
+    // LAD (anterior interventricular)
+    hCtx.lineWidth=3; hCtx.strokeStyle='rgba(120,20,20,.6)';
+    hCtx.beginPath(); hCtx.moveTo(192,160); hCtx.quadraticCurveTo(190,270,187,375); hCtx.stroke();
+    hCtx.lineWidth=1.5; hCtx.strokeStyle=isInfarct?'rgba(150,150,150,.5)':'rgba(255,100,100,.55)';
+    hCtx.beginPath(); hCtx.moveTo(192,160); hCtx.quadraticCurveTo(190,270,187,375); hCtx.stroke();
+    // RCA (right AV groove)
+    hCtx.lineWidth=3; hCtx.strokeStyle='rgba(40,0,80,.5)';
+    hCtx.beginPath(); hCtx.moveTo(245,164); hCtx.bezierCurveTo(265,175,280,220,278,280); hCtx.quadraticCurveTo(274,330,250,362); hCtx.stroke();
+    hCtx.lineWidth=1.5; hCtx.strokeStyle='rgba(180,120,255,.45)';
+    hCtx.beginPath(); hCtx.moveTo(245,164); hCtx.bezierCurveTo(265,175,280,220,278,280); hCtx.quadraticCurveTo(274,330,250,362); hCtx.stroke();
+
+    // ---- CONDUCTION SYSTEM ----
+    const glow=(active,color)=>active?color:'rgba(250,204,21,.15)';
+    const glowW=(active)=>active?3:1;
+    hCtx.lineCap='round';
+    // SA node
+    const saAct=cond.has('sa');
+    hCtx.beginPath(); hCtx.arc(278,86,saAct?9:6,0,Math.PI*2);
+    hCtx.fillStyle=saAct?'#facc15':'rgba(250,204,21,.3)'; hCtx.fill();
+    if(saAct){
+        hCtx.beginPath(); hCtx.arc(278,86,13,0,Math.PI*2);
+        hCtx.strokeStyle='rgba(250,204,21,.35)'; hCtx.lineWidth=2; hCtx.stroke();
+    }
+    // AV node
+    const avAct=cond.has('av');
+    hCtx.beginPath(); hCtx.arc(194,156,avAct?7:4,0,Math.PI*2);
+    hCtx.fillStyle=avAct?'#facc15':'rgba(250,204,21,.3)'; hCtx.fill();
+    // SA→AV path
+    hCtx.setLineDash([4,4]);
+    hCtx.lineWidth=glowW(cond.has('saav'));
+    hCtx.strokeStyle=glow(cond.has('saav'),'#facc15');
+    hCtx.beginPath(); hCtx.moveTo(272,90); hCtx.quadraticCurveTo(240,118,198,152); hCtx.stroke();
+    hCtx.setLineDash([]);
+    // Bundle of His
+    const hisAct=cond.has('his');
+    hCtx.lineWidth=glowW(hisAct); hCtx.strokeStyle=glow(hisAct,'#facc15');
+    hCtx.beginPath(); hCtx.moveTo(194,160); hCtx.lineTo(194,195); hCtx.stroke();
+    // Left bundle
+    const lbAct=cond.has('lb');
+    hCtx.lineWidth=glowW(lbAct); hCtx.strokeStyle=glow(lbAct,'#facc15');
+    hCtx.beginPath(); hCtx.moveTo(194,195); hCtx.quadraticCurveTo(178,235,172,285); hCtx.stroke();
+    // Right bundle
+    const rbAct=cond.has('rb');
+    hCtx.lineWidth=glowW(rbAct); hCtx.strokeStyle=glow(rbAct,'#facc15');
+    hCtx.beginPath(); hCtx.moveTo(194,195); hCtx.quadraticCurveTo(218,230,230,285); hCtx.stroke();
+    // Purkinje
+    const pkAct=cond.has('purk');
+    hCtx.lineWidth=glowW(pkAct); hCtx.strokeStyle=glow(pkAct,'rgba(250,204,21,.7)');
+    hCtx.setLineDash([2,3]);
+    hCtx.beginPath(); hCtx.moveTo(172,285); hCtx.quadraticCurveTo(155,310,152,350); hCtx.stroke();
+    hCtx.beginPath(); hCtx.moveTo(172,285); hCtx.quadraticCurveTo(165,310,175,345); hCtx.stroke();
+    hCtx.beginPath(); hCtx.moveTo(230,285); hCtx.quadraticCurveTo(240,310,244,350); hCtx.stroke();
+    hCtx.setLineDash([]);
+
+    // ---- ANATOMY LABELS ----
+    hCtx.font='bold 11px "Noto Sans TC",sans-serif';
+    hCtx.textAlign='center'; hCtx.textBaseline='middle';
+    [
+        ['LA',137,112,'rgba(255,200,200,.85)'],
+        ['RA',246,116,'rgba(200,160,255,.85)'],
+        ['LV',138,268,'rgba(255,160,160,.90)'],
+        ['RV',240,265,'rgba(180,130,255,.85)'],
+        ['Ao',225,55,'rgba(255,180,180,.8)'],
+        ['PA',198,42,'rgba(180,140,255,.8)'],
+    ].forEach(([txt,x,y,color])=>{
+        hCtx.fillStyle=color; hCtx.fillText(txt,x,y);
+    });
+
+    // Blood particles drawn on top
+    drawParticles(hCtx, t, sys, avO, slO);
+
+    } finally { hCtx.restore(); }
+}
+
+// =====================================================================
+// BLOOD PARTICLE SYSTEM
+// =====================================================================
+// Paths in 380×390 logical space
+const PATHS = {
+    svc_ra:  [{x:278,y:38},{x:278,y:55},{x:276,y:72},{x:274,y:90},{x:268,y:106},{x:258,y:114}],
+    ivc_ra:  [{x:278,y:205},{x:277,y:196},{x:275,y:185},{x:268,y:176},{x:258,y:166},{x:248,y:128}],
+    ra_rv:   [{x:246,y:132},{x:246,y:148},{x:244,y:165},{x:241,y:185},{x:240,y:218},{x:241,y:256},{x:243,y:295},{x:242,y:332}],
+    rv_pa:   [{x:242,y:325},{x:240,y:295},{x:238,y:256},{x:234,y:215},{x:229,y:178},{x:224,y:155},{x:220,y:138},{x:218,y:105},{x:218,y:72},{x:210,y:45},{x:197,y:34}],
+    pv_la:   [{x:65,y:68},{x:76,y:78},{x:90,y:88},{x:106,y:98},{x:120,y:107},{x:133,y:113}],
+    la_lv:   [{x:136,y:125},{x:144,y:140},{x:150,y:157},{x:153,y:178},{x:154,y:215},{x:155,y:255},{x:154,y:295},{x:150,y:330},{x:145,y:358},{x:186,y:375}],
+    lv_ao:   [{x:186,y:372},{x:187,y:340},{x:187,y:298},{x:187,y:255},{x:187,y:215},{x:187,y:178},{x:187,y:150},{x:186,y:112},{x:185,y:75},{x:185,y:48},{x:195,y:36}],
+};
+const P_RGB = {
+    svc_ra:[109,40,217], ivc_ra:[109,40,217],
+    ra_rv:[76,29,149],   rv_pa:[76,29,149],
+    pv_la:[220,38,38],   la_lv:[185,28,28], lv_ao:[185,28,28],
+};
+const COUNTS = {svc_ra:5,ivc_ra:4,ra_rv:7,rv_pa:7,pv_la:5,la_lv:8,lv_ao:8};
+
+let particles = [];
+function initParticles() {
+    particles = [];
+    for (const [name, path] of Object.entries(PATHS)) {
+        const n = COUNTS[name]||6;
+        for (let i=0;i<n;i++) {
+            particles.push({ stream:name, path, t:i/n, speed:.5+Math.random()*.3,
+                r:2.8+Math.random()*1.4, alpha:.55+Math.random()*.35 });
+        }
+    }
+}
+
+function isStreamActive(name, t, avO, slO) {
+    if (name==='svc_ra'||name==='ivc_ra'||name==='pv_la') return true; // always flow
+    if (name==='ra_rv'||name==='la_lv') return avO > .3;  // during diastole (AV open)
+    if (name==='rv_pa'||name==='lv_ao') return slO > .2;  // during ejection (SL open)
+    return false;
+}
+
+function catmullRom(path, t_) {
+    const n=path.length-1;
+    const sc=t_*n, i=Math.min(Math.floor(sc),n-1), f=sc-i;
+    const p0=path[Math.max(0,i-1)], p1=path[i], p2=path[Math.min(n,i+1)], p3=path[Math.min(n,i+2)];
+    const t2=f*f, t3=t2*f;
+    return {
+        x:.5*((2*p1.x)+(-p0.x+p2.x)*f+(2*p0.x-5*p1.x+4*p2.x-p3.x)*t2+(-p0.x+3*p1.x-3*p2.x+p3.x)*t3),
+        y:.5*((2*p1.y)+(-p0.y+p2.y)*f+(2*p0.y-5*p1.y+4*p2.y-p3.y)*t2+(-p0.y+3*p1.y-3*p2.y+p3.y)*t3)
+    };
+}
+
+function updateParticles(dt, avO, slO) {
+    for (const p of particles) {
+        if (isStreamActive(p.stream, cycleProgress, avO, slO)) {
+            p.t = (p.t + dt * p.speed) % 1;
+        }
+    }
+}
+
+function drawParticles(hCtx, t, sys, avO, slO) {
+    for (const p of particles) {
+        if (!isStreamActive(p.stream, t, avO, slO)) continue;
+        const pos = catmullRom(p.path, p.t);
+        const [r,g,b] = P_RGB[p.stream] || [255,255,255];
+        const grd = hCtx.createRadialGradient(pos.x,pos.y,0,pos.x,pos.y,p.r*2);
+        grd.addColorStop(0, `rgba(${r},${g},${b},${p.alpha})`);
+        grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
+        hCtx.beginPath(); hCtx.arc(pos.x,pos.y,p.r*2,0,Math.PI*2);
+        hCtx.fillStyle=grd; hCtx.fill();
+        hCtx.beginPath(); hCtx.arc(pos.x,pos.y,p.r*.5,0,Math.PI*2);
+        hCtx.fillStyle=`rgba(${r},${g},${b},0.95)`; hCtx.fill();
+    }
+}
+
+// =====================================================================
+// Canvas resize
+// =====================================================================
+function resizeCanvases() {
+    const hc = DOM.heartCanvas;
+    hc.width  = hc.parentElement.clientWidth;
+    hc.height = hc.parentElement.clientHeight;
+
+    const ec = DOM.ecgCanvas;
+    ec.width  = ec.parentElement.clientWidth;
+    ec.height = ec.parentElement.clientHeight;
+    initECGBuf();
+
+    const pc = DOM.pcgCanvas;
+    pc.width  = pc.parentElement.clientWidth;
+    pc.height = pc.parentElement.clientHeight;
+    initPCGBuf();
+}
+window.addEventListener('resize', resizeCanvases);
+setTimeout(resizeCanvases, 80);
+initParticles();
+
+// =====================================================================
+// State management helpers
+// =====================================================================
+const BADGE = {
+    blue:  ['bg-blue-500/10','text-blue-400','border-blue-500/20'],
+    red:   ['bg-red-500/10','text-red-400','border-red-500/20'],
+    amber: ['bg-amber-500/10','text-amber-400','border-amber-500/20'],
+    cyan:  ['bg-cyan-500/10','text-cyan-400','border-cyan-500/20'],
+    yellow:['bg-yellow-500/10','text-yellow-400','border-yellow-500/20'],
+    slate: ['bg-slate-500/10','text-slate-400','border-slate-500/20'],
+};
+function setBadge(txt,color){
+    const [bg,fg,b]=BADGE[color];
+    DOM.stateBadge.textContent=txt;
+    DOM.stateBadge.className=`px-2.5 py-1 text-xs font-semibold rounded-full ${bg} ${fg} border ${b}`;
+}
+const VC={'green':'text-green-400','red':'text-red-400','yellow':'text-yellow-500','slate':'text-slate-500'};
+function setValve(avT,avC,slT,slC){
+    DOM.avStatus.textContent=avT; DOM.avStatus.className=`text-sm font-bold ${VC[avC]} mt-1`;
+    DOM.slStatus.textContent=slT; DOM.slStatus.className=`text-sm font-bold ${VC[slC]} mt-1`;
+}
+let s1T=null, s2T=null;
+function flashSound(el,cls){
+    el.className=`text-xs font-bold ${cls} mt-1 animate-pulse`;
+    const ref=el===DOM.s1Status?'s1':'s2';
+    if(ref==='s1'){clearTimeout(s1T);s1T=setTimeout(()=>DOM.s1Status.className='text-xs font-semibold text-slate-500 mt-1',550);}
+    else{clearTimeout(s2T);s2T=setTimeout(()=>DOM.s2Status.className='text-xs font-semibold text-slate-500 mt-1',550);}
+}
+const CK=['p','qrs','st','t'];
+function highlightCard(active){
+    CK.forEach(k=>{
+        const el=DOM.cards[k];
+        if(k===active){el.classList.add('border-emerald-500/60','bg-emerald-950/20','scale-[1.02]');el.classList.remove('bg-slate-950/60','border-slate-800');}
+        else{el.classList.remove('border-emerald-500/60','bg-emerald-950/20','scale-[1.02]');el.classList.add('bg-slate-950/60','border-slate-800');}
+    });
+}
+
+// =====================================================================
+// State-machine UI update (badge, valve status, card, heart sounds)
+// =====================================================================
+function updateUIState(t) {
+    const isInfarct = currentMode==='stemi'||currentMode==='old_mi';
+    isInfarct ? DOM.infarctWarn.classList.remove('hidden') : DOM.infarctWarn.classList.add('hidden');
+
+    if (t>=.05&&t<.24) {
+        setBadge('心房去極化 (P波) - 主動充盈','blue');
+        setValve('開啟充盈','green','關閉防回流','red');
+        highlightCard('p');
+    } else if (t>=.24&&t<.28) {
+        setBadge('房室結延遲 (PR段)','yellow');
+    } else if (t>=.28&&t<.35) {
+        setBadge('心室去極化 (QRS) - 等容收縮','red');
+        setValve('💥 閉合 S1','red','閉鎖憋壓','yellow');
+        highlightCard('qrs');
+        if(!playedS1&&isPlaying){playSound('S1');firePCG('S1');playedS1=true;flashSound(DOM.s1Status,'text-red-500');}
+    } else if (t>=.35&&t<.48) {
+        setBadge('心室射血期 (ST段)','amber');
+        setValve('密閉','slate','大開射血','green');
+        highlightCard('st');
+    } else if (t>=.48&&t<.64) {
+        setBadge('心室再極化 (T波) - 等容舒張','cyan');
+        setValve('準備放鬆','yellow','💥 閉合 S2','red');
+        highlightCard('t');
+        if(!playedS2&&isPlaying){playSound('S2');firePCG('S2');playedS2=true;flashSound(DOM.s2Status,'text-cyan-400');}
+        if(currentMode==='old_mi'&&t>=.58&&!playedS3&&isPlaying){playSound('S3');playedS3=true;}
+    } else {
+        setBadge('等電位靜息 (TP段) - 被動充盈','slate');
+        setValve('大開灌流','green','密閉防逆流','slate');
+        highlightCard(null);
+    }
+}
+
+// =====================================================================
+// Mode switching
+// =====================================================================
+const MODES = {
+    normal:    {border:'border-emerald-500/80',bg:'bg-emerald-950/20',bpm:65},
+    stemi:     {border:'border-red-500/80',    bg:'bg-red-950/20',    bpm:95},
+    nstemi:    {border:'border-amber-500/80',   bg:'bg-amber-950/20',  bpm:75},
+    hyperacute:{border:'border-cyan-500/80',   bg:'bg-cyan-950/20',   bpm:65},
+    old_mi:    {border:'border-indigo-500/80', bg:'bg-indigo-950/20', bpm:60},
+};
+function setMode(mode){
+    currentMode=mode;
+    document.querySelectorAll('.mode-btn').forEach(b=>{
+        b.classList.remove(...Object.values(MODES).flatMap(m=>[m.border,m.bg]));
+        b.classList.add('border-slate-800','bg-slate-950');
+    });
+    const btn=document.getElementById(`btn-mode-${mode}`), m=MODES[mode];
+    btn.classList.remove('border-slate-800','bg-slate-950');
+    btn.classList.add(m.border,m.bg);
+    bpm=m.bpm;
+    DOM.bpmSlider.value=bpm; DOM.bpmText.textContent=`${bpm} BPM`;
+    if(ecgBuf)initECGBuf();
+    if(pcgBuf)initPCGBuf();
+}
+
+// =====================================================================
+// Playback controls
+// =====================================================================
+function togglePlay(state){
+    isPlaying=state;
+    DOM.btnAutoplay.className=state
+        ? 'px-3 py-1 bg-emerald-500 hover:bg-emerald-600 text-slate-950 text-[11px] font-bold rounded transition'
+        : 'px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold rounded transition';
+    DOM.btnPause.className=state
+        ? 'px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold rounded transition'
+        : 'px-3 py-1 bg-amber-500 hover:bg-amber-600 text-slate-950 text-[11px] font-bold rounded transition';
+}
+DOM.btnAutoplay.addEventListener('click',()=>togglePlay(true));
+DOM.btnPause.addEventListener('click',()=>togglePlay(false));
+DOM.bpmSlider.addEventListener('input',e=>{bpm=parseInt(e.target.value);DOM.bpmText.textContent=`${bpm} BPM`;});
+DOM.scrubber.addEventListener('input',e=>{
+    if(isPlaying)togglePlay(false);
+    cycleProgress=parseInt(e.target.value)/100;
+    updateUIState(cycleProgress);
+});
+
+// =====================================================================
+// Main animation loop
+// =====================================================================
+function loop(ts){
+    if(!lastTimestamp) lastTimestamp=ts;
+    const dt=ts-lastTimestamp; lastTimestamp=ts;
+
+    if(isPlaying){
+        cycleProgress += dt/(60000/bpm);
+        if(cycleProgress>=1){cycleProgress-=1;playedS1=playedS2=playedS3=false;}
+        DOM.scrubber.value=Math.floor(cycleProgress*100);
+        const avO=avOpenFactor(cycleProgress);
+        const slO=slOpenFactor(cycleProgress);
+        updateParticles(dt/1000, avO, slO);
+        pushECG(ecgVal(cycleProgress, currentMode));
+        pushPCG(cycleProgress);
+    }
+
+    // Scan cursor follows ECG write head
+    const pct = ecgBuf ? (ecgHead/ecgBuf.length)*100 : 0;
+    DOM.scanCursor.style.left = `${pct.toFixed(1)}%`;
+
+    drawHeartFrame(cycleProgress, currentMode);
+    drawECG();
+    drawPCG();
+    updateUIState(cycleProgress);
+
+    requestAnimationFrame(loop);
+}
+
+setMode('normal');
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
