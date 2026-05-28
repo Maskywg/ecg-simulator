@@ -145,27 +145,47 @@
         <!-- 病理切換 -->
         <div>
             <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">臨床案例切換</h3>
-            <div class="grid grid-cols-2 md:grid-cols-5 gap-2">
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-2 mb-3">
                 <button onclick="setMode('normal')"     id="btn-mode-normal"     class="mode-btn p-2.5 rounded-xl border-2 border-emerald-500/80 bg-emerald-950/20 text-left flex flex-col gap-0.5 transition hover:bg-slate-800">
-                    <span class="text-xs font-bold text-slate-200">0. 正常竇性</span>
-                    <span class="text-[10px] text-emerald-400">均勻泵血</span>
+                    <span class="text-[10px] font-bold text-emerald-400">① 正常</span>
+                    <span class="text-xs font-bold text-slate-200 leading-tight">正常竇性心律</span>
+                    <span class="text-[9px] text-slate-400 mt-0.5">NSR · 心肌均勻泵血</span>
                 </button>
                 <button onclick="setMode('stemi')"      id="btn-mode-stemi"      class="mode-btn p-2.5 rounded-xl border-2 border-slate-800 bg-slate-950 text-left flex flex-col gap-0.5 transition hover:bg-slate-800">
-                    <span class="text-xs font-bold text-slate-200 flex items-center gap-1"><i class="fa-solid fa-triangle-exclamation text-red-400 text-[10px]"></i>1. STEMI</span>
-                    <span class="text-[10px] text-red-400">墓碑 ST 上升</span>
+                    <span class="text-[10px] font-bold text-red-400 flex items-center gap-1"><i class="fa-solid fa-triangle-exclamation text-[9px]"></i>② 緊急</span>
+                    <span class="text-xs font-bold text-slate-200 leading-tight">急性心肌梗塞</span>
+                    <span class="text-[9px] text-red-400 mt-0.5">STEMI · 墓碑形ST上升</span>
                 </button>
                 <button onclick="setMode('nstemi')"     id="btn-mode-nstemi"     class="mode-btn p-2.5 rounded-xl border-2 border-slate-800 bg-slate-950 text-left flex flex-col gap-0.5 transition hover:bg-slate-800">
-                    <span class="text-xs font-bold text-slate-200">2. NSTEMI</span>
-                    <span class="text-[10px] text-amber-400">ST 凹陷/T 倒</span>
+                    <span class="text-[10px] font-bold text-amber-400">③ 次緊急</span>
+                    <span class="text-xs font-bold text-slate-200 leading-tight">非完全心肌梗塞</span>
+                    <span class="text-[9px] text-amber-400 mt-0.5">NSTEMI · ST凹陷/T倒</span>
                 </button>
                 <button onclick="setMode('hyperacute')" id="btn-mode-hyperacute" class="mode-btn p-2.5 rounded-xl border-2 border-slate-800 bg-slate-950 text-left flex flex-col gap-0.5 transition hover:bg-slate-800">
-                    <span class="text-xs font-bold text-slate-200">3. 超早期 T 波</span>
-                    <span class="text-[10px] text-cyan-400">高尖對稱 T</span>
+                    <span class="text-[10px] font-bold text-cyan-400">④ 早期警示</span>
+                    <span class="text-xs font-bold text-slate-200 leading-tight">超急性期缺血</span>
+                    <span class="text-[9px] text-cyan-400 mt-0.5">Hyperacute T · 高尖T波</span>
                 </button>
                 <button onclick="setMode('old_mi')"     id="btn-mode-old_mi"     class="mode-btn p-2.5 rounded-xl border-2 border-slate-800 bg-slate-950 text-left flex flex-col gap-0.5 transition hover:bg-slate-800">
-                    <span class="text-xs font-bold text-slate-200">4. 陳舊 MI</span>
-                    <span class="text-[10px] text-indigo-400">深 Q 波 + S3</span>
+                    <span class="text-[10px] font-bold text-indigo-400">⑤ 陳舊病灶</span>
+                    <span class="text-xs font-bold text-slate-200 leading-tight">陳舊性心肌梗塞</span>
+                    <span class="text-[9px] text-indigo-400 mt-0.5">Old MI · 病理Q波+S3音</span>
                 </button>
+            </div>
+
+            <!-- 臨床說明卡 (動態更新) -->
+            <div id="mode-info-card" class="rounded-xl border p-3 transition-all duration-300 bg-emerald-950/20 border-emerald-500/30">
+                <div class="flex flex-wrap items-start gap-x-4 gap-y-2">
+                    <div class="min-w-0">
+                        <p id="mi-title" class="text-xs font-bold text-slate-100 mb-1">正常竇性心律 (Normal Sinus Rhythm, NSR)</p>
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 text-[10px] text-slate-400">
+                            <span><strong class="text-slate-300">⚡ ECG：</strong><span id="mi-ecg">P-QRS-T 形態正常，間期正常</span></span>
+                            <span><strong class="text-slate-300">🫀 病理：</strong><span id="mi-patho">竇房結規律放電，心肌均勻收縮射血</span></span>
+                            <span><strong class="text-slate-300">🏥 臨床：</strong><span id="mi-clinical">無症狀，心臟功能正常</span></span>
+                        </div>
+                    </div>
+                    <span id="mi-urgency" class="shrink-0 px-2 py-0.5 text-[10px] font-bold rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">✓ 正常</span>
+                </div>
             </div>
         </div>
     </section>
@@ -941,10 +961,59 @@ function updateUIState(t) {
 const MODES = {
     normal:    {border:'border-emerald-500/80',bg:'bg-emerald-950/20',bpm:65},
     stemi:     {border:'border-red-500/80',    bg:'bg-red-950/20',    bpm:95},
-    nstemi:    {border:'border-amber-500/80',   bg:'bg-amber-950/20',  bpm:75},
+    nstemi:    {border:'border-amber-500/80',  bg:'bg-amber-950/20',  bpm:75},
     hyperacute:{border:'border-cyan-500/80',   bg:'bg-cyan-950/20',   bpm:65},
     old_mi:    {border:'border-indigo-500/80', bg:'bg-indigo-950/20', bpm:60},
 };
+
+const MODE_INFO = {
+    normal: {
+        title:    '正常竇性心律 (Normal Sinus Rhythm, NSR)',
+        ecg:      'P-QRS-T 形態正常・PR 0.12–0.20s・QRS < 0.12s・T 波直立',
+        patho:    '竇房結規律放電，電訊號經正常傳導路徑傳遞，心肌均勻收縮射血',
+        clinical: '無症狀，心臟功能正常，射血分數 (EF) 正常 55–70%',
+        urgency:  '✓ 正常',
+        cardBg:   'bg-emerald-950/20',  cardBorder: 'border-emerald-500/30',
+        urgCls:   'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30',
+    },
+    stemi: {
+        title:    '急性ST段上升心肌梗塞 (ST-Elevation Myocardial Infarction, STEMI)',
+        ecg:      'ST 段顯著上升 ≥ 1mm，呈墓碑形 (tombstone)；T 波與 ST 融合；後期出現病理 Q 波',
+        patho:    '冠狀動脈血栓完全堵塞 → 心肌全層缺氧壞死 (transmural infarction)，前壁收縮功能消失',
+        clinical: '劇烈胸痛、冷汗、呼吸困難；Troponin 升高；需在 90 分鐘內 PCI（心導管）再灌注！',
+        urgency:  '🚨 緊急！',
+        cardBg:   'bg-red-950/20',      cardBorder: 'border-red-500/40',
+        urgCls:   'bg-red-500/20 text-red-400 border border-red-500/30',
+    },
+    nstemi: {
+        title:    '非ST段上升心肌梗塞 (Non-ST-Elevation MI, NSTEMI)',
+        ecg:      'ST 段水平或下凹壓低 (depression) ≥ 0.5mm；T 波對稱性倒置 (inversion)；無明顯 Q 波',
+        patho:    '冠狀動脈次全阻塞 → 心肌內膜下缺氧壞死 (subendocardial infarction)，程度較 STEMI 輕',
+        clinical: '胸悶、胸痛症狀；Troponin 升高但低於 STEMI；需積極藥物治療 + 72h 內擇期 PCI',
+        urgency:  '⚠️ 次緊急',
+        cardBg:   'bg-amber-950/20',    cardBorder: 'border-amber-500/40',
+        urgCls:   'bg-amber-500/20 text-amber-400 border border-amber-500/30',
+    },
+    hyperacute: {
+        title:    '超急性期心肌缺血 T 波 (Hyperacute T-wave, 心肌梗塞最早期)',
+        ecg:      'T 波高尖對稱，形似帳篷 (tent-shaped)，基底部增寬；為 STEMI 演變的最早期（發病後數分鐘）',
+        patho:    '冠狀動脈急性阻塞初期，心肌細胞缺氧但尚未壞死，細胞外 K⁺ 堆積改變復極電位',
+        clinical: '此階段最易被忽略！患者剛剛開始胸痛。若此時介入，心肌尚可完全恢復，是黃金搶救時機',
+        urgency:  '⚡ 黃金期',
+        cardBg:   'bg-cyan-950/20',     cardBorder: 'border-cyan-500/40',
+        urgCls:   'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30',
+    },
+    old_mi: {
+        title:    '陳舊性心肌梗塞 (Old / Prior Myocardial Infarction)',
+        ecg:      '病理性 Q 波 (寬 > 0.04s、深 > R 波 1/4)；ST 段已恢復正常；T 波低平或輕度倒置',
+        patho:    '過去心肌壞死後，壞死組織由無電活動的纖維疤痕取代，形成永久性 Q 波與室壁運動異常',
+        clinical: '可能無急性症狀，但心室功能受損；聽診可聞 S3 奔馬律；長期心衰、心律不整風險增加',
+        urgency:  '📋 慢性追蹤',
+        cardBg:   'bg-indigo-950/20',   cardBorder: 'border-indigo-500/40',
+        urgCls:   'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30',
+    },
+};
+
 function setMode(mode){
     currentMode=mode;
     document.querySelectorAll('.mode-btn').forEach(b=>{
@@ -958,6 +1027,17 @@ function setMode(mode){
     DOM.bpmSlider.value=bpm; DOM.bpmText.textContent=`${bpm} BPM`;
     if(ecgBuf)initECGBuf();
     if(pcgBuf)initPCGBuf();
+
+    // 更新說明卡
+    const info = MODE_INFO[mode];
+    const card = document.getElementById('mode-info-card');
+    card.className = `rounded-xl border p-3 transition-all duration-300 ${info.cardBg} ${info.cardBorder}`;
+    document.getElementById('mi-title').textContent    = info.title;
+    document.getElementById('mi-ecg').textContent      = info.ecg;
+    document.getElementById('mi-patho').textContent    = info.patho;
+    document.getElementById('mi-clinical').textContent = info.clinical;
+    document.getElementById('mi-urgency').textContent  = info.urgency;
+    document.getElementById('mi-urgency').className    = `shrink-0 px-2 py-0.5 text-[10px] font-bold rounded-full ${info.urgCls}`;
 }
 
 // =====================================================================
